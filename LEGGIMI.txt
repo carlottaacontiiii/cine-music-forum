@@ -1,0 +1,41 @@
+CINE MUSIC FORUM — come metterlo online (circa 10 minuti, tutto gratis)
+
+Nella cartella:
+  index.html  la pagina
+  setup.sql   crea il database delle proposte
+
+1. CREA IL DATABASE (Supabase)
+   - Vai su supabase.com, crea un account e poi "New project"
+     (nome: cine-music-forum, regione: Europe, scegli una password e salvala).
+   - Quando il progetto è pronto apri "SQL Editor" > "New query",
+     incolla tutto il contenuto di setup.sql e premi "Run".
+     Deve comparire "Success".
+
+2. COLLEGA LA PAGINA AL DATABASE
+   - In Supabase apri "Project Settings" > "API" (o "Data API" / "API Keys").
+   - Copia "Project URL" e la chiave pubblica ("anon public" oppure
+     "publishable"). NON usare la chiave "service_role" / "secret".
+   - Apri index.html con un editor di testo (TextEdit in modalità testo,
+     Blocco note, VS Code), cerca "CONFIGURAZIONE" e incolla i due valori
+     al posto di INCOLLA_QUI_PROJECT_URL e INCOLLA_QUI_CHIAVE_PUBBLICA.
+     Lascia gli apici: 'https://....supabase.co'
+
+3. PUBBLICA LA PAGINA (Netlify)
+   - Vai su app.netlify.com/drop, crea un account gratuito
+     e trascina l'intera cartella cine-music-forum nella pagina.
+   - Dopo pochi secondi hai un link tipo https://nome-a-caso.netlify.app
+     In "Site configuration" > "Change site name" puoi chiamarlo
+     per esempio cinemusicforum.netlify.app
+   - Per aggiornare la pagina in futuro: "Deploys" > trascina di nuovo la cartella.
+
+4. CONDIVIDI
+   - Manda il link nel gruppo Telegram. Non serve nessun account per proporre.
+
+COSE DA SAPERE
+   - Chiunque abbia il link può proporre ed estrarre: non pubblicatelo in giro.
+   - Ognuno può eliminare solo le proprie proposte, e solo dal telefono o
+     computer da cui le ha fatte. Tu puoi eliminare qualsiasi cosa da
+     Supabase > Table Editor > items.
+   - Le proposte anonime non salvano nessun nome né collegamento a chi le ha fatte.
+   - I progetti Supabase gratuiti vanno in pausa se nessuno li usa per circa
+     una settimana: si riattivano con un clic dal pannello di Supabase.
