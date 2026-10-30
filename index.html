@@ -184,6 +184,17 @@ main{padding-block:24px 80px}
 
 .toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:12px 18px;border-radius:14px;font-weight:600;z-index:60;max-width:calc(100% - 32px);box-shadow:4px 4px 0 var(--sticker)}
 
+.mine-acts{display:flex;gap:10px;flex:none}
+@media (max-width:520px){nav .long{display:none}nav button{padding:9px 13px}}
+.chip.add{border-style:dashed;color:var(--muted)}
+.chip.add[aria-expanded="true"]{border-color:var(--k);color:var(--ink)}
+.chip:disabled{opacity:.55;cursor:not-allowed}
+.kind:disabled{opacity:.55;cursor:not-allowed;transform:none}
+.other-row{flex-direction:row;align-items:center;gap:8px}
+.other-row input{flex:1;min-width:0}
+.editing{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--sticker);color:#1B1640;border-radius:14px;padding:10px 14px;font-size:.92rem}
+.editing .del{color:#1B1640;font-weight:700}
+.mine-intro{margin:0 0 16px;color:var(--muted);max-width:60ch}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
 @keyframes pop{0%{transform:scale(.9) rotate(-2deg)}100%{transform:none}}
@@ -201,6 +212,7 @@ main{padding-block:24px 80px}
   <nav role="tablist">
     <button role="tab" data-tab="proponi" id="t-proponi">Proponi</button>
     <button role="tab" data-tab="bacheca" id="t-bacheca">Bacheca<span class="n" id="n-b">0</span></button>
+    <button role="tab" data-tab="mie" id="t-mie">Le mie<span class="long"> proposte</span><span class="n" id="n-m">0</span></button>
     <button role="tab" data-tab="estrai" id="t-estrai">Estrai</button>
   </nav>
 </header>
@@ -231,7 +243,7 @@ const NOTE_MAX=200;
 const COLS='id,kind,title,creator,genres,note,anon,nick,status,chosen_at,theme,created_at';
 
 const S={items:[],mine:new Set(Object.keys(tokens())),tab:lsGet('cmf_tab')||'',fk:'all',fg:null,loaded:false,confirm:null,newId:null};
-const F={kind:'film',title:'',by:'',genres:[],note:'',anon:false,nick:lsGet('cmf_nick')};
+const F={kind:'film',title:'',by:'',genres:[],note:'',anon:false,nick:lsGet('cmf_nick'),editId:null,otherOpen:false};
 const X={kind:'film',mode:'random',genre:null,n:1,result:[],spinning:false,theme:''};
 let sb=null,canWrite=true,noDb=false;
 
@@ -251,7 +263,9 @@ function card(i,opt={}){
   const g=(i.genres||[]).map(x=>`<span class="chip tiny">${esc(x)}</span>`).join('');
   const who=i.anon?'<span class="mask" aria-hidden="true"></span>Anonimo':esc(i.nick||'Qualcuno');
   const canDel=!opt.preview&&S.mine.has(i.id);
-  const del=canDel?(S.confirm===i.id?`<button class="del sure" data-act="del-yes" data-id="${i.id}">Sì, elimina</button>`:`<button class="del" data-act="del" data-id="${i.id}">Elimina</button>`):'';
+  const del=canDel?`<span class="mine-acts">${S.confirm===i.id
+    ?`<button class="del sure" data-act="del-yes" data-id="${i.id}">Sì, elimina</button><button class="del" data-act="del-no">No</button>`
+    :`<button class="del" data-act="edit" data-id="${i.id}">Modifica</button><button class="del" data-act="del" data-id="${i.id}">Elimina</button>`}</span>`:'';
   return `<article class="card ${k}${S.newId===i.id?' new':''}" data-k="${k}">
     ${cover}
     <div class="cbody">
@@ -264,25 +278,63 @@ function card(i,opt={}){
 }
 
 /* ---------- render ---------- */
+function counts(){$('#n-b').textContent=S.items.length;$('#n-m').textContent=S.items.filter(i=>S.mine.has(i.id)).length}
 function render(){
   if(!S.tab)S.tab='proponi';
   document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===S.tab));
-  $('#n-b').textContent=S.items.length;
+  counts();
   const note=noDb?'<div class="notice">La bacheca non è ancora collegata al database: apri <b>index.html</b> e incolla in alto i due valori di Supabase (vedi LEGGIMI).</div>':'';
-  const v=S.tab==='proponi'?viewPropose():S.tab==='bacheca'?viewBoard():viewDraw();
+  const v=S.tab==='proponi'?viewPropose():S.tab==='bacheca'?viewBoard():S.tab==='mie'?viewMine():viewDraw();
   $('#main').innerHTML=note+v;
   document.body.dataset.k=S.tab==='proponi'?F.kind:S.tab==='estrai'?X.kind:'film';
   S.newId=null;
 }
 
+function editing(){return F.editId?S.items.find(i=>i.id===F.editId)||null:null}
+function isLocked(){const e=editing();return !!(e&&e.status==='chosen')}
+function genreChips(){
+  const k=F.kind,locked=isLocked(),base=GEN[k];
+  const lower=base.map(b=>b.toLowerCase());
+  const extra=[...new Set([...S.items.filter(i=>i.kind===k).flatMap(i=>i.genres||[]),...F.genres])]
+    .filter(g=>!lower.includes(g.toLowerCase())).sort((a,b)=>a.localeCompare(b));
+  return [...base,...extra].map(g=>`<button type="button" class="chip" data-genre="${esc(g)}" aria-pressed="${F.genres.includes(g)}" ${locked?'disabled':''}>${esc(g)}</button>`).join('')
+    +(locked?'':`<button type="button" class="chip add" data-act="other" aria-expanded="${F.otherOpen}">+ Altro…</button>`);
+}
+function genreHint(){
+  if(isLocked())return 'Già estratto: i generi restano questi.';
+  return F.genres.length===2?'Perfetto, due generi.':F.genres.length?'Puoi aggiungerne ancora uno.':'Scegline uno o due. Se manca il tuo, usa “Altro”.';
+}
+function refreshGenres(){
+  const box=$('#g-chips');if(!box)return;
+  box.innerHTML=genreChips();$('#g-count').textContent=F.genres.length+'/2';
+  const h=$('#g-hint');h.className='hint';h.textContent=genreHint();
+  const row=$('#other-row');if(row)row.hidden=!F.otherOpen;
+}
+function warnMax(){
+  const hint=$('#g-hint'),box=$('#g-chips');
+  hint.textContent='Massimo due! Togline uno per sceglierne un altro.';hint.className='hint warn';
+  box.classList.remove('shake');void box.offsetWidth;box.classList.add('shake');
+}
+function addOther(){
+  const inp=$('#f-other');if(!inp)return;
+  let v=inp.value.replace(/\s+/g,' ').trim().slice(0,24);if(!v)return;
+  v=v.charAt(0).toUpperCase()+v.slice(1);
+  const same=[...GEN.film,...GEN.album,...S.items.flatMap(i=>i.genres||[])].find(g=>g.toLowerCase()===v.toLowerCase());
+  if(same)v=same;
+  if(F.genres.includes(v)){inp.value='';return}
+  if(F.genres.length>=2){warnMax();return}
+  F.genres.push(v);inp.value='';F.otherOpen=false;refreshGenres();refreshPreview();
+}
 function viewPropose(){
-  const k=F.kind,c=KC[k];
+  if(F.editId&&S.loaded&&!editing())Object.assign(F,{editId:null});
+  const k=F.kind,c=KC[k],ed=editing(),locked=isLocked();
   return `<div class="compose">
   <form class="form" id="form" novalidate data-k="${k}">
+    ${ed?`<div class="editing"><span>Stai modificando <b>${esc(ed.title)}</b>.${locked?' È già stato estratto: puoi correggere testi e firma.':''}</span><button type="button" class="del" data-act="cancel-edit">Annulla</button></div>`:''}
     <div class="step"><h2><span class="no">1</span>Cosa proponi?</h2>
       <div class="kinds">
-        <button type="button" class="kind" data-k="film" data-kind="film" aria-pressed="${k==='film'}"><span class="ico f"></span><span><b>Un film</b><span>da vedere insieme</span></span></button>
-        <button type="button" class="kind" data-k="album" data-kind="album" aria-pressed="${k==='album'}"><span class="ico a"></span><span><b>Un album</b><span>da ascoltare insieme</span></span></button>
+        <button type="button" class="kind" data-k="film" data-kind="film" aria-pressed="${k==='film'}" ${locked?'disabled':''}><span class="ico f"></span><span><b>Un film</b><span>da vedere insieme</span></span></button>
+        <button type="button" class="kind" data-k="album" data-kind="album" aria-pressed="${k==='album'}" ${locked?'disabled':''}><span class="ico a"></span><span><b>Un album</b><span>da ascoltare insieme</span></span></button>
       </div></div>
     <div class="step"><h2><span class="no">2</span>${c.art}</h2>
       <div class="two">
@@ -290,8 +342,13 @@ function viewPropose(){
         <div class="field"><label for="f-by">${c.by}</label><input id="f-by" maxlength="60" placeholder="${c.byPh}" value="${esc(F.by)}" autocomplete="off"></div>
       </div></div>
     <div class="step"><h2><span class="no">3</span>Che genere è? <small id="g-count">${F.genres.length}/2</small></h2>
-      <div class="chips" id="g-chips">${GEN[k].map(g=>`<button type="button" class="chip" data-genre="${esc(g)}" aria-pressed="${F.genres.includes(g)}">${esc(g)}</button>`).join('')}</div>
-      <p class="hint" id="g-hint">Scegline uno o due.</p></div>
+      <div class="chips" id="g-chips">${genreChips()}</div>
+      <div class="field other-row" id="other-row" ${F.otherOpen&&!locked?'':'hidden'}>
+        <label for="f-other" style="position:absolute;left:-9999px">Altro genere</label>
+        <input id="f-other" maxlength="24" placeholder="Scrivi il genere, es. Shoegaze" autocomplete="off">
+        <button type="button" class="chip" data-act="other-add">Aggiungi</button>
+      </div>
+      <p class="hint" id="g-hint">${genreHint()}</p></div>
     <div class="step"><h2><span class="no">4</span>Vuoi aggiungere qualcosa? <small>facoltativo</small></h2>
       <div class="field"><label for="f-note" style="position:absolute;left:-9999px">Commento</label>
         <textarea id="f-note" maxlength="${NOTE_MAX}" placeholder="${k==='film'?'Perché vederlo? Una scena, una sensazione, un motivo per cui ti è rimasto addosso.':'Il pezzo da non perdere, quando ascoltarlo, perché ti ha preso.'}">${esc(F.note)}</textarea>
@@ -303,12 +360,29 @@ function viewPropose(){
       </div>
       <div class="field" id="nick-f" ${F.anon?'hidden':''}><label for="f-nick">Il tuo nome o soprannome</label><input id="f-nick" maxlength="30" placeholder="es. Carlotta" value="${esc(F.nick)}" autocomplete="nickname"></div></div>
     <p class="err" id="f-err" hidden></p>
-    <button class="cta" type="submit" ${canWrite?'':'disabled'}>Proponi ${k==='film'?'il film':"l'album"}</button>
+    <button class="cta" type="submit" ${canWrite?'':'disabled'}>${ed?'Salva le modifiche':`Proponi ${k==='film'?'il film':"l'album"}`}</button>
   </form>
   <aside class="preview-col"><span class="lbl">Anteprima in bacheca</span><div id="preview">${card(F,{preview:true})}</div></aside>
   </div>`;
 }
 function refreshPreview(){const p=$('#preview');if(p)p.innerHTML=card(F,{preview:true})}
+
+function viewMine(){
+  if(!S.loaded&&!noDb)return '<div class="empty"><strong>Sto aprendo le tue proposte…</strong></div>';
+  const list=S.items.filter(i=>S.mine.has(i.id)).sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
+  if(!list.length)return `<div class="empty"><strong>Qui non c'è ancora niente</strong>Le proposte che fai da questo telefono o computer compaiono qui, pronte da modificare. Quelle fatte da un altro dispositivo o browser le ritrovi lì.${canWrite?'<button class="cta" data-go="proponi">Fai una proposta</button>':''}</div>`;
+  return `<p class="mine-intro">Le proposte che hai fatto da questo browser. Puoi modificarle o eliminarle; quelle anonime restano anonime per tutti gli altri.</p><div class="board">${list.map(i=>card(i)).join('')}</div>`;
+}
+function openEdit(id){
+  const i=S.items.find(x=>x.id===id);if(!i)return;
+  Object.assign(F,{kind:i.kind,title:i.title||'',by:i.by||'',genres:(i.genres||[]).slice(),note:i.note||'',anon:!!i.anon,
+    nick:i.anon?(F.nick||lsGet('cmf_nick')):(i.nick||''),editId:id,otherOpen:false});
+  S.tab='proponi';S.confirm=null;render();try{scrollTo({top:0,behavior:RM?'auto':'smooth'})}catch(_){}
+}
+function cancelEdit(){
+  Object.assign(F,{title:'',by:'',genres:[],note:'',editId:null,otherOpen:false,anon:false,nick:lsGet('cmf_nick')||F.nick});
+  S.tab='mie';lsSet('cmf_tab','mie');render();
+}
 
 function viewBoard(){
   let list=S.items.slice();
@@ -370,7 +444,7 @@ async function load(){
   const t=tokens();S.mine=new Set(Object.keys(t).filter(id=>S.items.some(i=>i.id===id)));
   X.result=X.result.filter(id=>S.items.some(i=>i.id===id&&i.status!=='chosen'));
   if(X.spinning)return;
-  if(S.tab==='proponi'){$('#n-b').textContent=S.items.length;return}
+  if(S.tab==='proponi'){counts();return}
   if(document.activeElement&&document.activeElement.id==='x-theme')return;
   render();
 }
@@ -405,16 +479,24 @@ async function submit(e){
   if(!F.genres.length)return say('Scegli almeno un genere.');
   if(!F.anon&&!F.nick)return say('Scrivi il tuo nome, oppure scegli di proporlo in anonimo.');
   const btn=e.target.querySelector('.cta');btn.disabled=true;
-  const id=uuid(),token=uuid();
-  const row={id,owner_token:token,kind:F.kind,title:F.title.slice(0,80),creator:F.by.slice(0,60)||null,genres:F.genres.slice(0,2),note:F.note.slice(0,NOTE_MAX)||null,anon:F.anon,nick:F.anon?null:F.nick.slice(0,30)};
-  const {error}=await sb.from('items').insert(row);
-  if(error){btn.disabled=false;return fail(error)}
-  const t=tokens();t[id]=token;saveTokens(t);
+  const row={kind:F.kind,title:F.title.slice(0,80),creator:F.by.slice(0,60)||null,genres:F.genres.slice(0,2),note:F.note.slice(0,NOTE_MAX)||null,anon:F.anon,nick:F.anon?null:F.nick.slice(0,30)};
+  const wasEdit=!!F.editId;let id;
+  if(wasEdit){
+    id=F.editId;const t=tokens();
+    const {data,error}=await sb.rpc('update_item',{p_id:id,p_token:t[id]||null,p_kind:row.kind,p_title:row.title,p_creator:row.creator||'',p_genres:row.genres,p_note:row.note||'',p_anon:row.anon,p_nick:row.nick||''});
+    if(error){btn.disabled=false;return fail(error)}
+    if(data!==true){btn.disabled=false;return say('Non riesco a salvarla: forse è stata eliminata, o è stata proposta da un altro browser.')}
+  }else{
+    id=uuid();const token=uuid();
+    const {error}=await sb.from('items').insert({id,owner_token:token,...row});
+    if(error){btn.disabled=false;return fail(error)}
+    const t=tokens();t[id]=token;saveTokens(t);S.mine.add(id);
+  }
   if(!F.anon)lsSet('cmf_nick',F.nick);
-  S.mine.add(id);S.newId=id;
-  Object.assign(F,{title:'',by:'',genres:[],note:''});
-  S.tab='bacheca';S.fk='all';S.fg=null;lsSet('cmf_tab','bacheca');
-  toast(row.anon?'Proposta inviata in incognito':'Proposta in bacheca, grazie!');
+  S.newId=id;
+  Object.assign(F,{title:'',by:'',genres:[],note:'',editId:null,otherOpen:false});
+  S.tab=wasEdit?'mie':'bacheca';S.fk='all';S.fg=null;lsSet('cmf_tab',S.tab);
+  toast(wasEdit?'Modifiche salvate':(row.anon?'Proposta inviata in incognito':'Proposta in bacheca, grazie!'));
   await load();render();
 }
 async function del(id){
@@ -428,13 +510,9 @@ async function del(id){
 document.addEventListener('click',e=>{
   const t=e.target.closest('[data-tab],[data-go]');if(t){S.tab=t.dataset.tab||t.dataset.go;S.confirm=null;lsSet('cmf_tab',S.tab);render();return}
   const kd=e.target.closest('[data-kind]');if(kd){if(F.kind!==kd.dataset.kind){F.kind=kd.dataset.kind;F.genres=[];render()}return}
-  const g=e.target.closest('[data-genre]');if(g){const v=g.dataset.genre,ix=F.genres.indexOf(v),hint=$('#g-hint'),box=$('#g-chips');
-    if(ix>=0)F.genres.splice(ix,1);
-    else if(F.genres.length>=2){hint.textContent='Massimo due! Togline uno per sceglierne un altro.';hint.className='hint warn';box.classList.remove('shake');void box.offsetWidth;box.classList.add('shake');return}
-    else F.genres.push(v);
-    g.setAttribute('aria-pressed',ix<0);$('#g-count').textContent=F.genres.length+'/2';
-    hint.className='hint';hint.textContent=F.genres.length===2?'Perfetto, due generi.':F.genres.length?'Puoi aggiungerne ancora uno.':'Scegline uno o due.';
-    refreshPreview();return}
+  const g=e.target.closest('[data-genre]');if(g){if(g.disabled)return;const v=g.dataset.genre,ix=F.genres.indexOf(v);
+    if(ix>=0)F.genres.splice(ix,1);else if(F.genres.length>=2){warnMax();return}else F.genres.push(v);
+    refreshGenres();refreshPreview();return}
   const an=e.target.closest('[data-anon]');if(an){F.anon=an.dataset.anon==='1';document.querySelectorAll('[data-anon]').forEach(b=>b.setAttribute('aria-pressed',b===an));$('#nick-f').hidden=F.anon;refreshPreview();return}
   const fk=e.target.closest('[data-fk]');if(fk){S.fk=fk.dataset.fk;S.fg=null;render();return}
   const fg=e.target.closest('[data-fg]');if(fg){S.fg=S.fg===fg.dataset.fg?null:fg.dataset.fg;render();return}
@@ -445,6 +523,11 @@ document.addEventListener('click',e=>{
   const a=e.target.closest('[data-act]');if(!a)return;
   switch(a.dataset.act){
     case 'del':S.confirm=a.dataset.id;render();break;
+    case 'del-no':S.confirm=null;render();break;
+    case 'edit':openEdit(a.dataset.id);break;
+    case 'cancel-edit':cancelEdit();break;
+    case 'other':F.otherOpen=!F.otherOpen;refreshGenres();if(F.otherOpen){const o=$('#f-other');if(o)o.focus()}break;
+    case 'other-add':addOther();break;
     case 'del-yes':del(a.dataset.id);break;
     case 'pull':pull();break;
     case 'confirm':confirmPick();break;
@@ -461,6 +544,7 @@ document.addEventListener('input',e=>{
   const er=$('#f-err');if(er&&id&&id.startsWith('f-'))er.hidden=true;
 });
 document.addEventListener('submit',e=>{if(e.target.id==='form')submit(e)});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='f-other'){e.preventDefault();addOther()}});
 
 /* ---------- avvio ---------- */
 (async()=>{
